@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import * as glob from "glob";
 
 interface CalendarEvent {
   uid: string;
@@ -16,6 +17,7 @@ interface CalendarEvent {
   status: string;
   created: string;
   lastModified: string;
+  calendar: string; // Added calendar field
 }
 
 class ICStoCSVConverter {
@@ -92,7 +94,23 @@ class ICStoCSVConverter {
     return attendees;
   }
 
-  public parseICS(icsContent: string): CalendarEvent[] {
+  private extractCalendarName(filename: string): string {
+    // Get base filename without path and extension
+    const baseName = path.basename(filename, path.extname(filename));
+
+    // Extract part before first underscore
+    const underscoreIndex = baseName.indexOf("_");
+    if (underscoreIndex === -1) {
+      return baseName; // No underscore found, return full name
+    }
+
+    return baseName.substring(0, underscoreIndex);
+  }
+
+  public parseICS(
+    icsContent: string,
+    calendarName: string = ""
+  ): CalendarEvent[] {
     const events: CalendarEvent[] = [];
     const lines = icsContent.split(/\r?\n/);
 
@@ -121,6 +139,7 @@ class ICStoCSVConverter {
           status: "",
           created: "",
           lastModified: "",
+          calendar: calendarName,
         };
         continue;
       }
@@ -214,6 +233,7 @@ class ICStoCSVConverter {
 
   public convertToCSV(events: CalendarEvent[]): string {
     const headers = [
+      "Calendar",
       "UID",
       "Summary",
       "Description",
@@ -234,6 +254,7 @@ class ICStoCSVConverter {
 
     for (const event of events) {
       const row = [
+        this.escapeCsvField(event.calendar),
         this.escapeCsvField(event.uid),
         this.escapeCsvField(event.summary),
         this.escapeCsvField(event.description),
@@ -272,9 +293,16 @@ class ICStoCSVConverter {
       // Read ICS file
       const icsContent = fs.readFileSync(inputPath, "utf-8");
 
+      // Extract calendar name from filename
+      const calendarName = this.extractCalendarName(inputPath);
+
       // Parse events
-      const events = this.parseICS(icsContent);
-      console.log(`Parsed ${events.length} events from ICS file`);
+      const events = this.parseICS(icsContent, calendarName);
+      console.log(
+        `Parsed ${events.length} events from ${path.basename(
+          inputPath
+        )} (${calendarName})`
+      );
 
       // Convert to CSV
       const csvContent = this.convertToCSV(events);
@@ -290,13 +318,91 @@ class ICStoCSVConverter {
       console.log("\nEvent Summary:");
       events.forEach((event, index) => {
         console.log(
-          `${index + 1}. ${event.summary} - ${event.startDate} ${
-            event.startTime || "(All Day)"
-          }`
+          `${index + 1}. [${event.calendar}] ${event.summary} - ${
+            event.startDate
+          } ${event.startTime || "(All Day)"}`
         );
       });
     } catch (error) {
       console.error("Error converting file:", error);
+    }
+  }
+
+  public convertFolder(folderPath: string, outputPath?: string): void {
+    try {
+      // Find all ICS files in the folder
+      const icsPattern = path.join(folderPath, "*.ics");
+      const icsFiles = glob.sync(icsPattern);
+
+      if (icsFiles.length === 0) {
+        console.log(`No ICS files found in folder: ${folderPath}`);
+        return;
+      }
+
+      console.log(`Found ${icsFiles.length} ICS files:`);
+      icsFiles.forEach((file) => console.log(`  - ${path.basename(file)}`));
+      console.log("");
+
+      let allEvents: CalendarEvent[] = [];
+      let totalFiles = 0;
+
+      // Process each ICS file
+      for (const icsFile of icsFiles) {
+        try {
+          const icsContent = fs.readFileSync(icsFile, "utf-8");
+          const calendarName = this.extractCalendarName(icsFile);
+          const events = this.parseICS(icsContent, calendarName);
+
+          console.log(
+            `Processed ${path.basename(icsFile)} (${calendarName}): ${
+              events.length
+            } events`
+          );
+          allEvents = allEvents.concat(events);
+          totalFiles++;
+        } catch (error) {
+          console.error(`Error processing ${path.basename(icsFile)}:`, error);
+        }
+      }
+
+      if (allEvents.length === 0) {
+        console.log("No events found in any ICS files.");
+        return;
+      }
+
+      // Sort events by start date
+      allEvents.sort((a, b) => {
+        const dateA = new Date(a.startDate + "T" + (a.startTime || "00:00"));
+        const dateB = new Date(b.startDate + "T" + (b.startTime || "00:00"));
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      // Convert to CSV
+      const csvContent = this.convertToCSV(allEvents);
+
+      // Determine output path
+      const output =
+        outputPath || path.join(folderPath, "combined_calendar.csv");
+
+      // Write CSV file
+      fs.writeFileSync(output, csvContent, "utf-8");
+
+      console.log(`\nCombined CSV created: ${output}`);
+      console.log(`Total files processed: ${totalFiles}`);
+      console.log(`Total events: ${allEvents.length}`);
+
+      // Print calendar summary
+      const calendarCounts = allEvents.reduce((acc, event) => {
+        acc[event.calendar] = (acc[event.calendar] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      console.log("\nEvents per calendar:");
+      Object.entries(calendarCounts).forEach(([calendar, count]) => {
+        console.log(`  ${calendar}: ${count} events`);
+      });
+    } catch (error) {
+      console.error("Error converting folder:", error);
     }
   }
 }
@@ -306,25 +412,46 @@ function main(): void {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
+    console.log("ICS to CSV Converter");
+    console.log("");
+    console.log("Usage:");
     console.log(
-      "Usage: ts-node ics-to-csv-converter.ts <input.ics> [output.csv]"
+      "  Single file: ts-node ics-to-csv-converter.ts <input.ics> [output.csv]"
     );
     console.log(
-      "Example: ts-node ics-to-csv-converter.ts calendar.ics events.csv"
+      "  Folder:      ts-node ics-to-csv-converter.ts <folder> [output.csv]"
     );
+    console.log("");
+    console.log("Examples:");
+    console.log("  ts-node ics-to-csv-converter.ts calendar.ics events.csv");
+    console.log("  ts-node ics-to-csv-converter.ts ./calendars/ combined.csv");
+    console.log("  ts-node ics-to-csv-converter.ts ./calendars/");
     process.exit(1);
   }
 
-  const inputFile = args[0];
+  const inputPath = args[0];
   const outputFile = args[1];
 
-  if (!fs.existsSync(inputFile)) {
-    console.error(`Input file not found: ${inputFile}`);
+  if (!fs.existsSync(inputPath)) {
+    console.error(`Input path not found: ${inputPath}`);
     process.exit(1);
   }
 
   const converter = new ICStoCSVConverter();
-  converter.convertFile(inputFile, outputFile);
+  const stats = fs.statSync(inputPath);
+
+  if (stats.isDirectory()) {
+    // Process folder
+    console.log(`Processing folder: ${inputPath}\n`);
+    converter.convertFolder(inputPath, outputFile);
+  } else if (stats.isFile() && inputPath.toLowerCase().endsWith(".ics")) {
+    // Process single file
+    console.log(`Processing file: ${inputPath}\n`);
+    converter.convertFile(inputPath, outputFile);
+  } else {
+    console.error("Input must be an ICS file or a folder containing ICS files");
+    process.exit(1);
+  }
 }
 
 // Export for library usage
