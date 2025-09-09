@@ -2,23 +2,41 @@ import * as fs from "fs";
 import * as path from "path";
 import * as glob from "glob";
 
-interface CalendarEvent {
-  uid: string;
+interface Event {
+  calendar: string;
   summary: string;
+  allDay: boolean;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
   description: string;
   location: string;
-  startDate: string;
-  endDate: string;
-  startTime: string;
-  endTime: string;
-  allDay: boolean;
   organizer: string;
-  attendees: string[];
+  attendees: string;
   status: string;
   created: string;
   lastModified: string;
-  calendar: string; // Added calendar field
+  uid: string;
 }
+
+const Event = [
+  "calendar",
+  "summary",
+  "allDay",
+  "startDate",
+  "startTime",
+  "endDate",
+  "endTime",
+  "description",
+  "location",
+  "organizer",
+  "attendees",
+  "status",
+  "created",
+  "lastModified",
+  "uid",
+];
 
 const parseDateTime = (
   dateTimeStr: string
@@ -80,7 +98,7 @@ const extractEmail = (organizerStr: string): string => {
   return emailMatch ? emailMatch[1] : "";
 };
 
-const parseAttendees = (lines: string[]): string[] => {
+const parseAttendees = (lines: string[]): string => {
   const attendees: string[] = [];
   for (const line of lines) {
     if (line.startsWith("ATTENDEE")) {
@@ -90,7 +108,7 @@ const parseAttendees = (lines: string[]): string[] => {
       }
     }
   }
-  return attendees;
+  return attendees.join(",");
 };
 
 // nameUntil_
@@ -103,14 +121,13 @@ const extractCalendarName = (filename: string): string => {
   return baseName.substring(0, underscoreIndex);
 };
 
-const parseICS = (
-  icsContent: string,
-  calendarName: string = ""
-): CalendarEvent[] => {
-  const events: CalendarEvent[] = [];
+const parseFile = (path: string): Event[] => {
+  const icsContent = fs.readFileSync(path, "utf-8");
+  const calendar = extractCalendarName(path);
+  const events: Event[] = [];
   const lines = icsContent.split(/\r?\n/);
 
-  let currentEvent: Partial<CalendarEvent> = {};
+  let currentEvent: Partial<Event> = {};
   let inEvent = false;
   let currentProperty = "";
   let currentValue = "";
@@ -131,11 +148,11 @@ const parseICS = (
         endTime: "",
         allDay: false,
         organizer: "",
-        attendees: [],
+        attendees: "",
         status: "",
         created: "",
         lastModified: "",
-        calendar: calendarName,
+        calendar,
       };
       continue;
     }
@@ -146,7 +163,7 @@ const parseICS = (
         setEventProperty(currentEvent, currentProperty, currentValue);
       }
 
-      events.push(currentEvent as CalendarEvent);
+      events.push(currentEvent as Event);
       inEvent = false;
       currentProperty = "";
       currentValue = "";
@@ -179,12 +196,11 @@ const parseICS = (
       currentProperty = currentProperty.substring(0, semicolonIndex);
     }
   }
-
   return events;
 };
 
 const setEventProperty = (
-  event: Partial<CalendarEvent>,
+  event: Partial<Event>,
   property: string,
   value: string
 ): void => {
@@ -227,25 +243,8 @@ const setEventProperty = (
   }
 };
 
-const convertToCSV = (events: CalendarEvent[], outputFile: string): void => {
-  const headers = [
-    "Calendar",
-    "UID",
-    "Summary",
-    "Description",
-    "Location",
-    "Start Date",
-    "End Date",
-    "Start Time",
-    "End Time",
-    "All Day",
-    "Organizer",
-    "Attendees",
-    "Status",
-    "Created",
-    "Last Modified",
-  ];
-  const csvLines: string[] = [headers.join(",")];
+const writeCSV = (events: Event[], outputFile: string): void => {
+  const csvLines: string[] = [Event.join(",")];
   for (const event of events) {
     const row = [
       escapeCsvField(event.calendar),
@@ -257,9 +256,9 @@ const convertToCSV = (events: CalendarEvent[], outputFile: string): void => {
       escapeCsvField(event.endDate),
       escapeCsvField(event.startTime),
       escapeCsvField(event.endTime),
-      event.allDay ? "Yes" : "No",
+      escapeCsvField(event.allDay),
       escapeCsvField(event.organizer),
-      escapeCsvField(event.attendees?.join("; ") || ""),
+      escapeCsvField(event.attendees),
       escapeCsvField(event.status),
       escapeCsvField(event.created),
       escapeCsvField(event.lastModified),
@@ -270,7 +269,10 @@ const convertToCSV = (events: CalendarEvent[], outputFile: string): void => {
 };
 
 // If field contains comma, newline, or quote, wrap in quotes and escape internal quotes
-const escapeCsvField = (field: string): string => {
+const escapeCsvField = (field: string | boolean): string => {
+  if (typeof field === "boolean") {
+    return field ? "x" : "";
+  }
   if (!field) return '""';
   if (field.includes(",") || field.includes("\n") || field.includes('"')) {
     return `"${field.replace(/"/g, '""')}"`;
@@ -278,7 +280,7 @@ const escapeCsvField = (field: string): string => {
   return `"${field}"`;
 };
 
-const convertFolder = (folderPath: string): CalendarEvent[] => {
+const parseFiles = (folderPath: string): Event[] => {
   const stats = fs.statSync(folderPath);
   let icsFiles: string[] = [];
   if (stats.isDirectory()) {
@@ -287,56 +289,49 @@ const convertFolder = (folderPath: string): CalendarEvent[] => {
   } else if (stats.isFile()) {
     icsFiles = [folderPath];
   }
-  let allEvents: CalendarEvent[] = [];
-  for (const icsFile of icsFiles) {
-    const icsContent = fs.readFileSync(icsFile, "utf-8");
-    const calendarName = extractCalendarName(icsFile);
-    const events = parseICS(icsContent, calendarName);
+  let allEvents: Event[] = [];
+  for (const path of icsFiles) {
+    const events = parseFile(path);
 
     allEvents = allEvents.concat(events);
   }
-
-  allEvents.sort((a, b) => {
-    const dateA = new Date(a.startDate + "T" + (a.startTime || "00:00"));
-    const dateB = new Date(b.startDate + "T" + (b.startTime || "00:00"));
-    return dateA.getTime() - dateB.getTime();
-  });
   return allEvents;
 };
 
-// CLI usage
-function main(): void {
-  const args = process.argv.slice(2);
-  if (args.length === 0) {
-    console.log("ICS to CSV Converter");
-    console.log("");
-    console.log("Usage:");
-    console.log(
-      "  Single file: ts-node ics-to-csv-converter.ts <input.ics> [output.csv]"
-    );
-    console.log(
-      "  Folder:      ts-node ics-to-csv-converter.ts <folder> [output.csv]"
-    );
-    console.log("");
-    console.log("Examples:");
-    console.log("  ts-node ics-to-csv-converter.ts calendar.ics events.csv");
-    console.log("  ts-node ics-to-csv-converter.ts ./calendars/ combined.csv");
-    console.log("  ts-node ics-to-csv-converter.ts ./calendars/");
-    process.exit(1);
-  }
+const eventFilter = (e: Event) => e.summary.includes("IFS");
 
-  const inputPath = args[0];
-  const outputFile = args[1];
-  const events = convertFolder(inputPath);
-  const calendarCounts = events.reduce((acc, event) => {
+const eventOrder = (a: Event, b: Event): number => {
+  const dateA = new Date(a.startDate + "T" + (a.startTime || "00:00"));
+  const dateB = new Date(b.startDate + "T" + (b.startTime || "00:00"));
+  return dateA.getTime() - dateB.getTime();
+};
+
+const eventSummary = (es: Event[]) => {
+  const calendarCounts = es.reduce((acc, event) => {
     acc[event.calendar] = (acc[event.calendar] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
   Object.entries(calendarCounts).forEach(([calendar, count]) => {
-    console.log(`  ${calendar}: ${count} events`);
+    console.log(`${calendar}:  ${count}`);
   });
+};
 
-  convertToCSV(events, outputFile);
+function main(): void {
+  const [_0, _1, path, csvPath] = process.argv;
+  if (path === undefined) {
+    console.log(`node index.ts <file_or_folderpath> <csv?>`);
+    process.exit(1);
+  }
+
+  let es = parseFiles(path);
+  es = es.filter(eventFilter);
+  es = es.sort(eventOrder);
+  //   eventSummary(es);
+  if (csvPath === undefined) {
+    console.table(eventSimple(es));
+  } else {
+    writeCSV(es, csvPath);
+  }
 }
 
 if (require.main === module) {
