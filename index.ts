@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as glob from "glob";
+import { pipe } from "effect";
 
 interface Event {
   calendar: string;
@@ -243,29 +244,14 @@ const setEventProperty = (
   }
 };
 
-const writeCSV = (events: Event[], outputFile: string): void => {
-  const csvLines: string[] = [Event.join(",")];
-  for (const event of events) {
-    const row = [
-      escapeCsvField(event.calendar),
-      escapeCsvField(event.uid),
-      escapeCsvField(event.summary),
-      escapeCsvField(event.description),
-      escapeCsvField(event.location),
-      escapeCsvField(event.startDate),
-      escapeCsvField(event.endDate),
-      escapeCsvField(event.startTime),
-      escapeCsvField(event.endTime),
-      escapeCsvField(event.allDay),
-      escapeCsvField(event.organizer),
-      escapeCsvField(event.attendees),
-      escapeCsvField(event.status),
-      escapeCsvField(event.created),
-      escapeCsvField(event.lastModified),
-    ];
-    csvLines.push(row.join(","));
+const writeCSV = (outputFile: string) => (es: Event[]) => {
+  const csv: string[] = [Event.join(",")];
+  for (const e of es) {
+    const row = Event.map((prop) => escapeCsvField(e[prop]));
+    csv.push(row.join(","));
   }
-  fs.writeFileSync(outputFile, csvLines.join("\n"), "utf-8");
+  fs.writeFileSync(outputFile, csv.join("\n"), "utf-8");
+  return es;
 };
 
 // If field contains comma, newline, or quote, wrap in quotes and escape internal quotes
@@ -298,12 +284,44 @@ const parseFiles = (folderPath: string): Event[] => {
   return allEvents;
 };
 
-const eventFilter = (e: Event) => e.summary.includes("IFS");
+const eventFilter = (es: Event[]) =>
+  es.filter(({ summary }) => summary.includes("IFS"));
 
-const eventOrder = (a: Event, b: Event): number => {
-  const dateA = new Date(a.startDate + "T" + (a.startTime || "00:00"));
-  const dateB = new Date(b.startDate + "T" + (b.startTime || "00:00"));
-  return dateA.getTime() - dateB.getTime();
+const eventSort = (es: Event[]) =>
+  es.sort((a: Event, b: Event): number => {
+    const dateA = new Date(a.startDate + "T" + (a.startTime || "00:00"));
+    const dateB = new Date(b.startDate + "T" + (b.startTime || "00:00"));
+    return dateA.getTime() - dateB.getTime();
+  });
+
+interface InvoicePosition {
+  raum: string;
+  verantstalter: string;
+  additional_info: string;
+  beginnTag: string;
+  beginnWochentag: string;
+  endeTag: string;
+  endeWochentag: string;
+}
+
+const eventMap = (e: Event): InvoicePosition => {
+  function germanDate(dateString) {
+    const parts = dateString.split("-");
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  }
+  function wochentag(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("de-DE", { weekday: "long" });
+  }
+  return {
+    raum: e.calendar,
+    verantstalter: e.summary,
+    additional_info: "",
+    beginnTag: germanDate(e.startDate),
+    beginnWochentag: wochentag(e.startDate),
+    endeTag: germanDate(e.endDate),
+    endeWochentag: wochentag(e.endDate),
+  };
 };
 
 const eventSummary = (es: Event[]) => {
@@ -315,23 +333,19 @@ const eventSummary = (es: Event[]) => {
     console.log(`${calendar}:  ${count}`);
   });
 };
-
 function main(): void {
   const [_0, _1, path, csvPath] = process.argv;
   if (path === undefined) {
     console.log(`node index.ts <file_or_folderpath> <csv?>`);
     process.exit(1);
   }
-
-  let es = parseFiles(path);
-  es = es.filter(eventFilter);
-  es = es.sort(eventOrder);
-  //   eventSummary(es);
-  if (csvPath === undefined) {
-    console.table(eventSimple(es));
-  } else {
-    writeCSV(es, csvPath);
-  }
+  let es = pipe(
+    parseFiles(path),
+    eventFilter,
+    eventSort,
+    writeCSV(csvPath),
+    eventSummary
+  );
 }
 
 if (require.main === module) {
