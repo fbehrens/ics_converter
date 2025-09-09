@@ -2,24 +2,12 @@ import * as fs from "fs";
 import * as path from "path";
 import * as glob from "glob";
 import { pipe } from "effect";
-
-interface Event {
-  calendar: string;
-  summary: string;
-  allDay: boolean;
-  startDate: string;
-  startTime: string;
-  endDate: string;
-  endTime: string;
-  description: string;
-  location: string;
-  organizer: string;
-  attendees: string;
-  status: string;
-  created: string;
-  lastModified: string;
-  uid: string;
-}
+import {
+  Event,
+  filterCalender,
+  invoicePosFromEvent,
+  InvoicePosition,
+} from "./logic";
 
 const parseDateTime = (
   dateTimeStr: string
@@ -260,8 +248,7 @@ const parseFiles = (folderPath: string): Event[] => {
   return allEvents;
 };
 
-const eventFilter = (es: Event[]) =>
-  es.filter(({ summary }) => summary.includes("IFS"));
+const eventFilter = (es: Event[]) => es.filter(filterCalender);
 
 const eventSort = (es: Event[]) =>
   es.sort((a: Event, b: Event): number => {
@@ -270,34 +257,17 @@ const eventSort = (es: Event[]) =>
     return dateA.getTime() - dateB.getTime();
   });
 
-interface InvoicePosition {
-  raum: string;
-  verantstalter: string;
-  additional_info: string;
-  beginnTag: string;
-  beginnWochentag: string;
-  endeTag: string;
-  endeWochentag: string;
+export function germanDate(dateString) {
+  const parts = dateString.split("-");
+  return `${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+export function wochentag(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("de-DE", { weekday: "long" });
 }
 
 const eventMap = (es: Event[]): InvoicePosition[] => {
-  function germanDate(dateString) {
-    const parts = dateString.split("-");
-    return `${parts[2]}.${parts[1]}.${parts[0]}`;
-  }
-  function wochentag(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("de-DE", { weekday: "long" });
-  }
-  return es.map((e) => ({
-    raum: e.calendar,
-    verantstalter: e.summary,
-    additional_info: "",
-    beginnTag: germanDate(e.startDate),
-    beginnWochentag: wochentag(e.startDate),
-    endeTag: germanDate(e.endDate),
-    endeWochentag: wochentag(e.endDate),
-  }));
+  return es.map(invoicePosFromEvent);
 };
 
 const eventSummary = (es: Event[]) => {
@@ -310,7 +280,7 @@ const eventSummary = (es: Event[]) => {
   });
 };
 function main(): void {
-  const [_0, _1, path, csvPath] = process.argv;
+  const [_0, _1, path, out] = process.argv;
   if (path === undefined) {
     console.log(`node index.ts <file_or_folderpath> <csv?>`);
     process.exit(1);
@@ -319,9 +289,9 @@ function main(): void {
     parseFiles(path),
     eventFilter,
     eventSort,
-    saveCsv(`cal_${csvPath}`),
+    saveCsv(`out/${out}_cal.csv`),
     eventMap,
-    saveCsv(`pos_${csvPath}`)
+    saveCsv(`out/${out}_pos.csv`)
   );
 }
 

@@ -4,5 +4,5 @@
 bun add glob
 bun add -D @types/glob
 
-bun index.ts michael@michael-rupe.de.ical tajet.csv
+bun index.ts michael@michael-rupe.de.ical tajet
 ```
