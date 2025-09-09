@@ -21,24 +21,6 @@ interface Event {
   uid: string;
 }
 
-const Event = [
-  "calendar",
-  "summary",
-  "allDay",
-  "startDate",
-  "startTime",
-  "endDate",
-  "endTime",
-  "description",
-  "location",
-  "organizer",
-  "attendees",
-  "status",
-  "created",
-  "lastModified",
-  "uid",
-];
-
 const parseDateTime = (
   dateTimeStr: string
 ): {
@@ -99,19 +81,6 @@ const extractEmail = (organizerStr: string): string => {
   return emailMatch ? emailMatch[1] : "";
 };
 
-const parseAttendees = (lines: string[]): string => {
-  const attendees: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith("ATTENDEE")) {
-      const emailMatch = line.match(/mailto:([^;]+)/);
-      if (emailMatch) {
-        attendees.push(emailMatch[1]);
-      }
-    }
-  }
-  return attendees.join(",");
-};
-
 // nameUntil_
 const extractCalendarName = (filename: string): string => {
   const baseName = path.basename(filename, path.extname(filename));
@@ -139,21 +108,21 @@ const parseFile = (path: string): Event[] => {
     if (line === "BEGIN:VEVENT") {
       inEvent = true;
       currentEvent = {
-        uid: "",
+        startDate: "",
+        startTime: "",
+        endDate: "",
+        endTime: "",
+        calendar,
         summary: "",
         description: "",
+        uid: "",
         location: "",
-        startDate: "",
-        endDate: "",
-        startTime: "",
-        endTime: "",
         allDay: false,
         organizer: "",
         attendees: "",
         status: "",
         created: "",
         lastModified: "",
-        calendar,
       };
       continue;
     }
@@ -244,27 +213,34 @@ const setEventProperty = (
   }
 };
 
-const writeCSV = (outputFile: string) => (es: Event[]) => {
-  const csv: string[] = [Event.join(",")];
-  for (const e of es) {
-    const row = Event.map((prop) => escapeCsvField(e[prop]));
-    csv.push(row.join(","));
-  }
-  fs.writeFileSync(outputFile, csv.join("\n"), "utf-8");
-  return es;
-};
+const saveCsv =
+  (filename: string) =>
+  <T extends Record<string, any>>(data: T[]) => {
+    const getHeaders = (obj: Record<string, any>): string => {
+      return Object.keys(obj).join(",");
+    };
+    const objectToCsvRow = (obj: Record<string, any>): string => {
+      return Object.values(obj)
+        .map((value) => {
+          const stringValue = String(value ?? "");
+          if (
+            stringValue.includes(",") ||
+            stringValue.includes('"') ||
+            stringValue.includes("\n")
+          ) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        })
+        .join(",");
+    };
 
-// If field contains comma, newline, or quote, wrap in quotes and escape internal quotes
-const escapeCsvField = (field: string | boolean): string => {
-  if (typeof field === "boolean") {
-    return field ? "x" : "";
-  }
-  if (!field) return '""';
-  if (field.includes(",") || field.includes("\n") || field.includes('"')) {
-    return `"${field.replace(/"/g, '""')}"`;
-  }
-  return `"${field}"`;
-};
+    if (data.length > 0) {
+      const csv = [getHeaders(data[0]), ...data.map(objectToCsvRow)];
+      fs.writeFileSync(filename, csv.join("\n"), "utf-8");
+    }
+    return data;
+  };
 
 const parseFiles = (folderPath: string): Event[] => {
   const stats = fs.statSync(folderPath);
@@ -304,7 +280,7 @@ interface InvoicePosition {
   endeWochentag: string;
 }
 
-const eventMap = (e: Event): InvoicePosition => {
+const eventMap = (es: Event[]): InvoicePosition[] => {
   function germanDate(dateString) {
     const parts = dateString.split("-");
     return `${parts[2]}.${parts[1]}.${parts[0]}`;
@@ -313,7 +289,7 @@ const eventMap = (e: Event): InvoicePosition => {
     const date = new Date(dateString);
     return date.toLocaleDateString("de-DE", { weekday: "long" });
   }
-  return {
+  return es.map((e) => ({
     raum: e.calendar,
     verantstalter: e.summary,
     additional_info: "",
@@ -321,7 +297,7 @@ const eventMap = (e: Event): InvoicePosition => {
     beginnWochentag: wochentag(e.startDate),
     endeTag: germanDate(e.endDate),
     endeWochentag: wochentag(e.endDate),
-  };
+  }));
 };
 
 const eventSummary = (es: Event[]) => {
@@ -343,8 +319,9 @@ function main(): void {
     parseFiles(path),
     eventFilter,
     eventSort,
-    writeCSV(csvPath),
-    eventSummary
+    saveCsv(`cal_${csvPath}`),
+    eventMap,
+    saveCsv(`pos_${csvPath}`)
   );
 }
 
