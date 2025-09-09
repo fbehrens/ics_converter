@@ -3,6 +3,7 @@
     "glob": "^11.0.3"
   },
   "devDependencies": {
-    "@types/glob": "^9.0.0"
+    "@types/glob": "^9.0.0",
+    "@types/node": "^24.3.1"
   }
 }
