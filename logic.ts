@@ -1,14 +1,5 @@
 import { germanDate, wochentag } from ".";
 
-export interface InvoicePosition {
-  raum: string;
-  verantstalter: string;
-  additional_info: string;
-  beginnTag: string;
-  beginnWochentag: string;
-  endeTag: string;
-  endeWochentag: string;
-}
 export interface Event {
   calendar: string;
   summary: string;
@@ -26,6 +17,17 @@ export interface Event {
   lastModified: string;
   uid: string;
 }
+export const filterCalender = (e: Event) => e.summary.includes("IFS");
+
+export interface InvoicePosition {
+  raum: string;
+  verantstalter: string;
+  additional_info: string;
+  beginnTag: string;
+  beginnWochentag: string;
+  endeTag: string;
+  endeWochentag: string;
+}
 export const invoicePosFromEvent = (e: Event): InvoicePosition => ({
   raum: e.calendar,
   verantstalter: e.summary,
@@ -35,4 +37,3 @@ export const invoicePosFromEvent = (e: Event): InvoicePosition => ({
   endeTag: germanDate(e.endDate),
   endeWochentag: wochentag(e.endDate),
 });
-export const filterCalender = (e: Event) => e.summary.includes("IFS");
