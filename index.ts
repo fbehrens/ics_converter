@@ -278,30 +278,15 @@ class ICStoCSVConverter {
     return `"${field}"`;
   }
 
-  public convertFile(inputPath: string, outputPath?: string): void {
-    const icsContent = fs.readFileSync(inputPath, "utf-8");
-    const calendarName = this.extractCalendarName(inputPath);
-    const events = this.parseICS(icsContent, calendarName);
-    console.log(
-      `Parsed ${events.length} events from ${path.basename(
-        inputPath
-      )} (${calendarName})`
-    );
-    const csvContent = this.convertToCSV(events);
-    const output = outputPath || inputPath.replace(/\.ics$/i, ".csv");
-    fs.writeFileSync(output, csvContent, "utf-8");
-    events.forEach((event, index) => {
-      console.log(
-        `${index + 1}. [${event.calendar}] ${event.summary} - ${
-          event.startDate
-        } ${event.startTime || "(All Day)"}`
-      );
-    });
-  }
-
   public convertFolder(folderPath: string, outputPath?: string): void {
-    const icsPattern = path.join(folderPath, "*.ics");
-    const icsFiles = glob.sync(icsPattern);
+    const stats = fs.statSync(folderPath);
+    let icsFiles: string[] = [];
+    if (stats.isDirectory()) {
+      const icsPattern = path.join(folderPath, "*.ics");
+      icsFiles = glob.sync(icsPattern);
+    } else if (stats.isFile()) {
+      icsFiles = [folderPath];
+    }
     let allEvents: CalendarEvent[] = [];
     for (const icsFile of icsFiles) {
       const icsContent = fs.readFileSync(icsFile, "utf-8");
@@ -359,15 +344,7 @@ function main(): void {
   const outputFile = args[1];
   const converter = new ICStoCSVConverter();
   const stats = fs.statSync(inputPath);
-
-  if (stats.isDirectory()) {
-    converter.convertFolder(inputPath, outputFile);
-  } else if (stats.isFile() && inputPath.toLowerCase().endsWith(".ics")) {
-    converter.convertFile(inputPath, outputFile);
-  } else {
-    console.error("Input must be an ICS file or a folder containing ICS files");
-    process.exit(1);
-  }
+  converter.convertFolder(inputPath, outputFile);
 }
 
 if (require.main === module) {
