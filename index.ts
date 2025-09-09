@@ -226,7 +226,7 @@ class ICStoCSVConverter {
     }
   }
 
-  public convertToCSV(events: CalendarEvent[]): string {
+  public convertToCSV(events: CalendarEvent[], outputFile: string): string {
     const headers = [
       "Calendar",
       "UID",
@@ -263,10 +263,9 @@ class ICStoCSVConverter {
         this.escapeCsvField(event.created),
         this.escapeCsvField(event.lastModified),
       ];
-
       csvLines.push(row.join(","));
     }
-    return csvLines.join("\n");
+    fs.writeFileSync(outputFile, csvLines.join("\n"), "utf-8");
   }
 
   // If field contains comma, newline, or quote, wrap in quotes and escape internal quotes
@@ -278,7 +277,7 @@ class ICStoCSVConverter {
     return `"${field}"`;
   }
 
-  public convertFolder(folderPath: string, outputPath?: string): void {
+  public convertFolder(folderPath: string): CalendarEvent[] {
     const stats = fs.statSync(folderPath);
     let icsFiles: string[] = [];
     if (stats.isDirectory()) {
@@ -287,6 +286,7 @@ class ICStoCSVConverter {
     } else if (stats.isFile()) {
       icsFiles = [folderPath];
     }
+
     let allEvents: CalendarEvent[] = [];
     for (const icsFile of icsFiles) {
       const icsContent = fs.readFileSync(icsFile, "utf-8");
@@ -301,27 +301,13 @@ class ICStoCSVConverter {
       const dateB = new Date(b.startDate + "T" + (b.startTime || "00:00"));
       return dateA.getTime() - dateB.getTime();
     });
-
-    const csvContent = this.convertToCSV(allEvents);
-
-    const output = outputPath || path.join(folderPath, "combined_calendar.csv");
-
-    fs.writeFileSync(output, csvContent, "utf-8");
-
-    const calendarCounts = allEvents.reduce((acc, event) => {
-      acc[event.calendar] = (acc[event.calendar] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    Object.entries(calendarCounts).forEach(([calendar, count]) => {
-      console.log(`  ${calendar}: ${count} events`);
-    });
+    return allEvents;
   }
 }
 
 // CLI usage
 function main(): void {
   const args = process.argv.slice(2);
-
   if (args.length === 0) {
     console.log("ICS to CSV Converter");
     console.log("");
@@ -343,8 +329,16 @@ function main(): void {
   const inputPath = args[0];
   const outputFile = args[1];
   const converter = new ICStoCSVConverter();
-  const stats = fs.statSync(inputPath);
-  converter.convertFolder(inputPath, outputFile);
+  const events = converter.convertFolder(inputPath);
+  const calendarCounts = events.reduce((acc, event) => {
+    acc[event.calendar] = (acc[event.calendar] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  Object.entries(calendarCounts).forEach(([calendar, count]) => {
+    console.log(`  ${calendar}: ${count} events`);
+  });
+
+  converter.convertToCSV(events, outputFile);
 }
 
 if (require.main === module) {
