@@ -11,6 +11,7 @@ export const wochentag = (dateString) => {
 export const saveCsv =
   (filename: string) =>
   <T extends Record<string, any>>(data: T[]) => {
+    console.log(`${data.length} records -> ${filename}`);
     const getHeaders = (obj: Record<string, any>): string => {
       return Object.keys(obj).join(",");
     };

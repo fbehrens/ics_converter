@@ -8,10 +8,10 @@ if (account === undefined) {
   process.exit(1);
 }
 let es = pipe(
-  i.parseFiles(`ical/${account}`),
+  i.parseFiles(`../../ical/${account}`),
   i.eventFilter,
   i.eventSort,
-  saveCsv(`out/${account}/cal.csv`),
+  saveCsv(`../../out/${account}/cal.csv`),
   i.eventMap,
-  saveCsv(`out/${account}/pos.csv`)
+  saveCsv(`../../out/${account}/pos.csv`)
 );
