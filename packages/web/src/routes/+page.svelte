@@ -3,6 +3,8 @@
 	import welcome from '$lib/images/svelte-welcome.webp';
 	import welcomeFallback from '$lib/images/svelte-welcome.png';
 	import { version } from 'parser';
+	const { data } = $props();
+	const { FOO } = data;
 </script>
 
 <svelte:head>
@@ -19,7 +21,7 @@
 			</picture>
 		</span>
 
-		to your new<br />SvelteKit app version{version}
+		to your new<br />SvelteKit app version{version} FOO={FOO}
 	</h1>
 
 	<h2>
