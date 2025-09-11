@@ -2,11 +2,12 @@
 	import Counter from './Counter.svelte';
 	import welcome from '$lib/images/svelte-welcome.webp';
 	import welcomeFallback from '$lib/images/svelte-welcome.png';
+	import { version } from 'parser';
 </script>
 
 <svelte:head>
 	<title>Home</title>
-	<meta name="description" content="Svelte demo app" />
+	<meta name="description" content="Svelte demo app version" />
 </svelte:head>
 
 <section>
@@ -18,7 +19,7 @@
 			</picture>
 		</span>
 
-		to your new<br />SvelteKit app
+		to your new<br />SvelteKit app version{version}
 	</h1>
 
 	<h2>
