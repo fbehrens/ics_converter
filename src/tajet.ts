@@ -1,4 +1,5 @@
-import { germanDate, wochentag } from ".";
+// just a git commit
+import { germanDate, wochentag } from "./helper";
 
 export interface Event {
   calendar: string;
