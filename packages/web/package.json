@@ -17,7 +17,7 @@
         "test": "npm run test:unit -- --run"
     },
     "dependencies": {
-        "parser": "workspace:*"
+        "parser": "file:../parser"
     },
     "devDependencies": {
         "@eslint/compat": "^1.2.5",
