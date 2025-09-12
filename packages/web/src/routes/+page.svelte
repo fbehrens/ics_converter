@@ -11,6 +11,7 @@
 	<link rel="icon" href={favicon} />
 </svelte:head> -->
 
+<a href="/app">app</a><a href="/app/about">about</a><!--for prerendering-->
 <form method="post" action="?/login" use:enhance>
 	<label>
 		Password
