@@ -1,5 +1,15 @@
 <script lang="ts">
 	const { data } = $props();
+
+	function download() {
+		const blob = new Blob(['hello\nworld'], { type: 'text/plain' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = 'hello-world.csv';
+		a.click();
+		URL.revokeObjectURL(url);
+	}
 </script>
 
 <svelte:head>
@@ -9,9 +19,8 @@
 
 <section>
 	<h1>ics-converter for tajet-garden</h1>
-
 	<h2>
-		try editing <strong>src/routes/+page.svelte</strong>
+		<button onclick={download}>export filtet and transform calender</button>
 	</h2>
 </section>
 
