@@ -1,9 +1,5 @@
 <script lang="ts">
-	import welcome from '$lib/images/svelte-welcome.webp';
-	import welcomeFallback from '$lib/images/svelte-welcome.png';
-	import { version } from 'parser';
 	const { data } = $props();
-	const { FOO } = data;
 </script>
 
 <svelte:head>
